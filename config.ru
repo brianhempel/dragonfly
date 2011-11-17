@@ -1,14 +1,18 @@
 require "rubygems"
-require "bundler/setup"
 $:.unshift(File.expand_path('../lib', __FILE__))
 require 'dragonfly'
-require 'rack/cache'
+require 'sinatra/base'
 
-APP = Dragonfly[:images].configure_with(:imagemagick)
+class MyApp < Sinatra::Base
 
-use Rack::Cache,
-  :verbose     => true,
-  :metastore   => 'file:/var/cache/rack/meta',
-  :entitystore => 'file:/var/cache/rack/body'
+  images = Dragonfly[:images].configure_with(:imagemagick).configure do |c|
+    c.async = true
+  end
 
-run APP
+  get '/' do
+    images.fetch_file('samples/beach.png').thumb('1000x1000#').to_response(env)
+  end
+
+end
+
+run MyApp

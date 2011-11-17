@@ -1,10 +1,17 @@
 require 'shellwords'
+begin
+  require 'fiber'
+rescue LoadError => e
+  #
+end
+
 
 module Dragonfly
   module Shell
     
     include Configurable
     configurable_attr :log_commands, false
+    configurable_attr :async, false
 
     # Exceptions
     class CommandFailed < RuntimeError; end
@@ -13,13 +20,13 @@ module Dragonfly
       full_command = "#{command} #{escape_args(args)}"
       log.debug("Running command: #{full_command}") if log_commands
       begin
-        result = `#{full_command}`
+        result, status = sync_or_async_command(full_command)
       rescue Errno::ENOENT
         raise_shell_command_failed(full_command)
       end
-      if $?.exitstatus == 1
+      if status.exitstatus == 1
         throw :unable_to_handle
-      elsif !$?.success?
+      elsif !status.success?
         raise_shell_command_failed(full_command)
       end
       result
@@ -38,6 +45,18 @@ module Dragonfly
     def quote(string)
       q = Dragonfly.running_on_windows? ? '"' : "'"
       q + string + q
+    end
+    
+    def sync_or_async_command(command)
+      if async
+        f = Fiber.current
+        EM.system command do |result, status|
+          f.resume [result, status]
+        end
+        Fiber.yield
+      else
+        [`#{command}`, $?]
+      end
     end
 
   end
